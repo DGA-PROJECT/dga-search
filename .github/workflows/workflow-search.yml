@@ -1,0 +1,107 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '.gitignore'
+      - '.dockerignore'
+      - 'node_modules'
+#      - 'README.md'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    outputs:
+      IMAGE_TAG: ${{ steps.set-var.outputs.IMAGE_TAG }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: main
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: npm
+#cache-dependency-path: ./back
+      - run: npm ci
+#      - run: npm test
+      - run: npm run build --if-present
+        env:
+          POSTGRE_USER: ${{ secrets.POSTGRE_USER_1 }}
+          POSTGRE_HOST: ${{ secrets.POSTGRE_HOST_1 }}
+          POSTGRE_DATABASE: ${{ secrets.POSTGRE_DATABASE_1 }}
+          POSTGRE_PASSWORD: ${{ secrets.POSTGRE_PASSWORD_1 }}
+          POSTGRE_PORT: ${{ secrets.POSTGRE_PORT_1 }}
+          MONGO_USER: ${{ secrets.MONGO_USER_1 }}
+          MONGO_HOST: ${{ secrets.MONGO_HOST_1 }}
+          MONGO_DATABASE: ${{ secrets.MONGO_DATABASE_1 }}
+          MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD_1 }}
+          MONGO_PORT: ${{ secrets.MONGO_PORT_1 }}
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+      
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set var
+        id: set-var
+        run: |
+          echo ::set-output name=ECR_REGISTRY::${{ steps.login-ecr.outputs.registry }}
+          echo ::set-output name=ECR_REPOSITORY::dga-search
+          echo ::set-output name=IMAGE_TAG::${{ github.run_number }}
+      
+      - uses: actions/checkout@v4
+ 
+      - name: Docker image Build
+        id: build-image
+        run: |
+          docker build \
+            -f Dockerfile \
+            --build-arg POSTGRE_USER=${{ secrets.POSTGRE_USER_1 }} \
+            --build-arg POSTGRE_HOST=${{ secrets.POSTGRE_HOST_1 }} \
+            --build-arg POSTGRE_DATABASE=${{ secrets.POSTGRE_DATABASE_1 }} \
+            --build-arg POSTGRE_PASSWORD=${{ secrets.POSTGRE_PASSWORD_1 }} \
+            --build-arg POSTGRE_PORT=${{ secrets.POSTGRE_PORT_1 }} \
+            --build-arg MONGO_USER=${{ secrets.MONGO_USER_1 }} \
+            --build-arg MONGO_HOST=${{ secrets.MONGO_HOST_1 }} \
+            --build-arg MONGO_DATABASE=${{ secrets.MONGO_DATABASE_1 }} \
+            --build-arg MONGO_PASSWORD=${{ secrets.MONGO_PASSWORD_1 }} \
+            --build-arg MONGO_PORT=${{ secrets.MONGO_PORT_1 }} \
+            -t ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG}} .
+
+      - name: Docker image Push
+        id: push-image
+        run: |
+          docker push ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG }}
+      
+      - name: Checkout Other Repository
+        uses: actions/checkout@v2
+        with:
+          repository: DGA-PROJECT/dga-deploy # 깃허브 배포용 레포로 지정 닉네임/레포이름
+          ref: main  # branch
+          token: ${{ secrets.aws_token }} #  secrets에 깃허브 토큰도 넣어야됨
+      - name: k8s manifest update
+        run: |
+          sed -i "s@ \
+          image: ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:.*@ \
+          image: ${{ steps.set-var.outputs.ECR_REGISTRY }}/${{ steps.set-var.outputs.ECR_REPOSITORY }}:${{ steps.set-var.outputs.IMAGE_TAG }}@g" search/deployment.yml 
+
+# test 용으로 txt 파일 수정하게 세팅. 깃허브로 세팅
+      - name: Commit and Push
+        run: |
+          git config user.email "ths8976@naver.com"
+          git config user.name "BrokeNose"
+          git add search/deployment.yml
+          git commit -m "Update image tag search/deployment.yml"
+          git push origin main
