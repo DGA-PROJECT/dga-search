@@ -43,6 +43,53 @@ const checkEnvURL = () => {
   }
 };
 
+const createAreaTuple = (selectedArea) => {
+  const queryString = `('${selectedArea.join("', '")}')`;
+  return queryString;
+};
+
+const areaString = (selected) => {
+  if (selected.area[0] == "all") {
+    return "";
+  } else {
+    return ` AND area IN ${createAreaTuple(selected.area)}`;
+  }
+};
+
+const travelTypeString = (selected) => {
+  if (selected.travelType == "all") {
+    return "";
+  } else {
+    return ` AND travel_type = '${selected.travelType}'`;
+  }
+};
+
+const destiTypeString = (selected) => {
+  if (selected.destiType == "all") {
+    return "";
+  } else {
+    return ` AND desti_type = '${selected.destiType}'`;
+  }
+};
+
+const filterString = (selected) => {
+  if (selected.filter == "newest") {
+    return `ORDER BY post_id DESC`;
+  } else if (selected.filter == "like") {
+    return `ORDER BY like_count DESC`;
+  } else {
+    return `ORDER BY revisit_count DESC`;
+  }
+};
+
+const questStringCheckIdempty = (arr) => {
+  if (arr[0]) {
+    return `\nWHERE post_id IN (${arr.join(",")})`;
+  } else {
+    return "\nWHERE post_id IN (-1)";
+  }
+};
+
 //axios테스트
 app.get(checkEnvURL() + "/testget", (req, res, next) => {
   res.json(JSON.stringify("서치 겟 연결됐엉"));
@@ -54,16 +101,87 @@ app.post(checkEnvURL() + "/postest", (req, res) => {
   res.json(req.body);
 });
 
-app.post(checkEnvURL() + "/postest", (req, res) => {
-  console.log(req.body);
-  req.body.message = "서치 포스트 성공했어!";
-  res.json(req.body);
-});
+app.post(checkEnvURL() + "/", async (req, res) => {
+  const selected = req.body.selected;
+  const maxIdx = req.body.maxIdx;
+  let client;
+  try {
+    client = await pool.connect();
+    const firstQuery = `
+    SELECT post_id
+    FROM posts
+    WHERE is_banned = false${areaString(selected)}${travelTypeString(
+      selected
+    )}${destiTypeString(selected)}
+    LIMIT ${(maxIdx + 1) * 1000}
+    OFFSET ${maxIdx * 1000 + 1};
+    `;
 
-app.post(checkEnvURL() + "/", (req, res) => {
-  console.log(req.body);
-  req.body.message = "서치 통신완료 성공했어!";
-  res.json(req.body);
+    const firstResult = await client.query(firstQuery);
+    const firstRows = firstResult.rows;
+    const firstPostIdsArray = firstRows.map((item) => item.post_id);
+
+    let finalPostIdsArray = firstPostIdsArray[0] ? firstPostIdsArray : [];
+    let finalQuery = `
+    SELECT post_id, user_id, nickname, title, like_count, desti_name, revisit_count, area, travel_type, desti_type, thumbnail_url
+    FROM posts${questStringCheckIdempty(finalPostIdsArray)}
+    ${filterString(selected)};
+    `;
+    let finalData = [];
+
+    if (selected.titleContent || selected.writer) {
+      const secondQuery = `
+              SELECT post_id, title, content, desti_name, nickname
+              FROM posts${questStringCheckIdempty(firstPostIdsArray)}
+              `;
+      const secondResult = await client.query(secondQuery);
+      // 닉네임 식별
+      const specificWriter = selected.writer;
+      const filteredNicknameData = secondResult.rows.filter((obj) =>
+        obj.nickname.includes(specificWriter)
+      );
+
+      //   검색어 식별
+      const specificString = selected.titleContent; // 특정한 문자열
+      const filteredWordData = filteredNicknameData.filter(
+        (obj) =>
+          obj.content.includes(specificString) ||
+          obj.desti_name.includes(specificString) ||
+          obj.title.includes(specificString)
+      );
+      console.log(filteredWordData);
+      finalPostIdsArray = filteredWordData.map((obj) => obj.post_id);
+      console.log(finalPostIdsArray);
+      if (finalPostIdsArray[0]) {
+        finalQuery = `
+        SELECT post_id, user_id, nickname, title, like_count, desti_name, revisit_count, area, travel_type, desti_type, thumbnail_url
+        FROM posts${questStringCheckIdempty(finalPostIdsArray)}
+        ${filterString(selected)};
+        `;
+        finalData = await client.query(finalQuery);
+        console.log(finalData.rows);
+        res.json({
+          message: "word success",
+          posts: finalData.rows,
+        });
+      } else {
+        res.json({
+          message: "no data success",
+          posts: [],
+        });
+      }
+    } else {
+      finalData = await client.query(finalQuery);
+      res.json({ message: "no word data success", posts: finalData.rows });
+    }
+  } catch (error) {
+    console.error("Error executing query:", error);
+    res.status(500).json(JSON.stringify({ message: "db error", posts: [] }));
+  } finally {
+    if (client) {
+      client.release(); // 클라이언트 반환
+    }
+  }
 });
 
 // 애플리케이션이 종료될 때 풀을 명시적으로 종료
