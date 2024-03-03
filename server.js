@@ -119,6 +119,8 @@ app.post(checkEnvURL() + "/", async (req, res) => {
 
     const firstResult = await client.query(firstQuery);
     const firstRows = firstResult.rows;
+
+    console.log(firstRows);
     const firstPostIdsArray = firstRows.map((item) => item.post_id);
 
     let finalPostIdsArray = firstPostIdsArray[0] ? firstPostIdsArray : [];
@@ -190,6 +192,19 @@ process.on("SIGINT", () => {
     console.log("Pool has ended");
     process.exit(0);
   });
+});
+
+app.get(checkEnvURL() + "/envtest", async (req, res, next) => {
+  try {
+    if (process.env.POSTGRE_DATABASE == "mydatabase") {
+      res.json(JSON.stringify("env읽을 수 있어 앙"));
+    } else {
+      res.json(JSON.stringify("env못읽어"));
+    }
+    process.env.POSTGRE_DATABASE;
+  } catch (err) {
+    res.status(500).json(JSON.stringify({ error: err.message }));
+  }
 });
 
 app.listen(port, () => console.log("Server is running on : " + port));
