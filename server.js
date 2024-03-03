@@ -39,7 +39,7 @@ const checkEnvURL = () => {
   if (process.env.NODE_ENV == "development") {
     return "";
   } else {
-    return "/search";
+    return "/searches";
   }
 };
 
