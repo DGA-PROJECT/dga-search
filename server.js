@@ -196,15 +196,28 @@ process.on("SIGINT", () => {
 
 app.get(checkEnvURL() + "/envtest", async (req, res, next) => {
   try {
-    if (process.env.POSTGRE_DATABASE == "mydatabase") {
-      res.json(JSON.stringify("env읽을 수 있어 앙"));
+    if (process.env.POSTGRE_DATABASE !== "mydatabase") {
+      res.json(JSON.stringify("database틀림"));
+    } else if (process.env.POSTGRE_HOST !== "52.78.60.234") {
+      res.json(JSON.stringify("host틀림"));
+    } else if (process.env.POSTGRE_USER !== "muzzi") {
+      res.json(JSON.stringify("user틀림"));
+    } else if (process.env.POSTGRE_PASSWORD !== "test123") {
+      res.json(JSON.stringify("비번 틀림"));
+    } else if (process.env.POSTGRE_PORT !== "5432") {
+      res.json(JSON.stringify("포트 틀림"));
     } else {
-      res.json(JSON.stringify("env못읽어"));
+      res.json(JSON.stringify("다맞음"));
+      console.log("?");
     }
-    process.env.POSTGRE_DATABASE;
   } catch (err) {
     res.status(500).json(JSON.stringify({ error: err.message }));
   }
 });
 
 app.listen(port, () => console.log("Server is running on : " + port));
+// console.log(process.env.POSTGRE_USER);
+// console.log(process.env.POSTGRE_HOST);
+// console.log(process.env.POSTGRE_DATABASE);
+// console.log(process.env.POSTGRE_PASSWORD);
+// console.log(process.env.POSTGRE_PORT);
