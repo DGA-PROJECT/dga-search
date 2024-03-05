@@ -186,7 +186,7 @@ app.post(checkEnvURL() + "/", async (req, res) => {
   }
 });
 
-// 애플리케이션이 종료될 때 풀을 명시적으로 종료
+// 애플리케이션이 종료될 때 풀을 명시적으로 종료dd
 process.on("SIGINT", () => {
   pool.end().then(() => {
     console.log("Pool has ended");
