@@ -102,6 +102,7 @@ app.post(checkEnvURL() + "/postest", (req, res) => {
 });
 
 app.post(checkEnvURL() + "/", async (req, res) => {
+  console.log("start");
   const selected = req.body.selected;
   const maxIdx = req.body.maxIdx;
   let client;
